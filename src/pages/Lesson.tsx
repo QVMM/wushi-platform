@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { formatTime, getStage, type Lesson as LessonType } from '../data/lessons'
 import { useProgress } from '../context/ProgressContext'
@@ -6,6 +6,7 @@ import { VideoPlayer } from '../components/VideoPlayer'
 import { SkeletonPanel } from '../components/SkeletonPanel'
 import { SealBadge } from '../components/SealBadge'
 import { GoldRule } from '../components/GoldRule'
+import { getIdlePose, type Landmark, type PoseMode } from '../lib/pose'
 
 type TipTab = 'essentials' | 'mistakes' | 'mnemonic' | 'safety'
 
@@ -18,6 +19,13 @@ export function Lesson() {
   const [skeletonOn, setSkeletonOn] = useState(false)
   const [selectedKf, setSelectedKf] = useState<string | null>(null)
   const [tipTab, setTipTab] = useState<TipTab>('essentials')
+  const [poseLandmarks, setPoseLandmarks] = useState<Landmark[]>(() => getIdlePose())
+  const [poseMode, setPoseMode] = useState<PoseMode>('idle')
+
+  const onPoseUpdate = useCallback((landmarks: Landmark[], mode: PoseMode) => {
+    setPoseLandmarks(landmarks)
+    setPoseMode(mode)
+  }, [])
 
   const activeKf = useMemo(() => {
     if (!lesson) return null
@@ -32,7 +40,6 @@ export function Lesson() {
     return best
   }, [lesson, selectedKf, time])
 
-  const phase = lesson && lesson.durationSec > 0 ? time / lesson.durationSec : 0
   const doneSet = lesson ? (checklistDone[lesson.id] ?? new Set<string>()) : new Set<string>()
 
   if (!lesson) return <Navigate to="/" replace />
@@ -101,6 +108,7 @@ export function Lesson() {
             onSkeletonToggle={() => setSkeletonOn((v) => !v)}
             selectedKeyframeId={selectedKf ?? activeKf?.id ?? null}
             onSelectKeyframe={(id) => setSelectedKf(id)}
+            onPoseUpdate={onPoseUpdate}
           />
 
           {activeKf && (
@@ -163,7 +171,7 @@ export function Lesson() {
         </div>
 
         <div className="lg:col-span-4 space-y-4">
-          <SkeletonPanel active={skeletonOn} phase={phase} className="h-64" />
+          <SkeletonPanel active={skeletonOn} landmarks={poseLandmarks} mode={poseMode} className="h-64" />
 
           <section className="rounded-xl border border-ink-border bg-ink-elevated overflow-hidden">
             <div className="flex border-b border-ink-border">

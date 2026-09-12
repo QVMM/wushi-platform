@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { formatTime, type Keyframe } from '../data/lessons'
+import { usePoseSkeleton } from '../hooks/usePoseSkeleton'
+import { drawPoseCanvas, modeLabel, type Landmark, type PoseMode } from '../lib/pose'
 
 interface Props {
   poster: string
@@ -12,6 +14,7 @@ interface Props {
   onSkeletonToggle: () => void
   selectedKeyframeId: string | null
   onSelectKeyframe: (id: string) => void
+  onPoseUpdate?: (landmarks: Landmark[], mode: PoseMode) => void
 }
 
 export function VideoPlayer({
@@ -25,11 +28,13 @@ export function VideoPlayer({
   onSkeletonToggle,
   selectedKeyframeId,
   onSelectKeyframe,
+  onPoseUpdate,
 }: Props) {
   const [playing, setPlaying] = useState(false)
   const [rate, setRate] = useState(1)
   const [displayPoster, setDisplayPoster] = useState(poster)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const timeRef = useRef(currentTime)
   const rateRef = useRef(rate)
   const durationRef = useRef(durationSec)
@@ -38,12 +43,49 @@ export function VideoPlayer({
   const last = useRef<number>(0)
   const hasVideo = Boolean(videoUrl)
 
+  const keyframeTimes = useMemo(() => keyframes.map((k) => k.time), [keyframes])
+
+  const { landmarks, mode } = usePoseSkeleton({
+    videoRef,
+    enabled: skeletonOn,
+    currentTime,
+    keyframeTimes,
+    hasVideo,
+  })
+
   timeRef.current = currentTime
   rateRef.current = rate
   durationRef.current = durationSec
   onTimeChangeRef.current = onTimeChange
 
-  // Keyframe stills as fallback poster when no HTML5 video (or for chip UI)
+  // Lift pose to parent (SkeletonPanel)
+  useEffect(() => {
+    onPoseUpdate?.(landmarks, mode)
+  }, [landmarks, mode, onPoseUpdate])
+
+  // Draw overlay canvas when skeleton is on
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    if (!skeletonOn) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      return
+    }
+
+    const parent = canvas.parentElement
+    const w = parent?.clientWidth || 800
+    const h = parent?.clientHeight || 450
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w
+      canvas.height = h
+    }
+    drawPoseCanvas(ctx, landmarks, canvas.width, canvas.height)
+  }, [landmarks, skeletonOn])
+
+  // Keyframe stills as fallback poster when no HTML5 video
   useEffect(() => {
     if (hasVideo) {
       setDisplayPoster(poster)
@@ -90,14 +132,12 @@ export function VideoPlayer({
     }
   }, [playing, hasVideo])
 
-  // Sync playbackRate on video element
   useEffect(() => {
     const v = videoRef.current
     if (!v || !hasVideo) return
     v.playbackRate = rate
   }, [rate, hasVideo])
 
-  // Sync external currentTime → video when scrubbing / seeking while paused
   useEffect(() => {
     const v = videoRef.current
     if (!v || !hasVideo) return
@@ -110,7 +150,6 @@ export function VideoPlayer({
     }
   }, [currentTime, hasVideo])
 
-  // Play / pause video element with state
   useEffect(() => {
     const v = videoRef.current
     if (!v || !hasVideo) return
@@ -121,6 +160,28 @@ export function VideoPlayer({
       v.pause()
     }
   }, [playing, hasVideo])
+
+  // Prefer anonymous CORS for MediaPipe; if CDN blocks it, retry without and use keyframe pose
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || !hasVideo) return
+    const isRemote = /^https?:\/\//i.test(videoUrl)
+    if (!isRemote) return
+
+    const onError = () => {
+      // Clearing crossOrigin allows playback when CDN omits ACAO; pose falls back to keyframes
+      if (v.crossOrigin) {
+        v.crossOrigin = null
+        const src = v.src
+        v.removeAttribute('src')
+        v.load()
+        v.src = src
+        v.load()
+      }
+    }
+    v.addEventListener('error', onError)
+    return () => v.removeEventListener('error', onError)
+  }, [videoUrl, hasVideo])
 
   const onTimeUpdate = useCallback(() => {
     const v = videoRef.current
@@ -176,6 +237,8 @@ export function VideoPlayer({
     }
   }
 
+  const statusChip = skeletonOn ? modeLabel(mode === 'idle' ? 'keyframe' : mode) : null
+
   return (
     <div className="rounded-xl overflow-hidden border border-ink-border bg-ink-elevated shadow-2xl shadow-black/40">
       <div className="relative aspect-video bg-black group">
@@ -184,9 +247,10 @@ export function VideoPlayer({
             ref={videoRef}
             src={videoUrl}
             poster={poster}
+            crossOrigin="anonymous"
             className="absolute inset-0 w-full h-full object-cover"
             playsInline
-            preload="metadata"
+            preload="auto"
             onTimeUpdate={onTimeUpdate}
             onEnded={onEnded}
             onPlay={() => setPlaying(true)}
@@ -201,24 +265,13 @@ export function VideoPlayer({
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 pointer-events-none" />
 
-        {skeletonOn && (
-          <div className="absolute inset-0 pointer-events-none">
-            <svg className="w-full h-full opacity-70" viewBox="0 0 800 450" preserveAspectRatio="xMidYMid slice">
-              <g stroke="#C6A15B" strokeWidth="2" fill="none">
-                <ellipse cx="400" cy="120" rx="55" ry="42" />
-                <line x1="400" y1="162" x2="400" y2="280" />
-                <line x1="400" y1="190" x2="320" y2="240" />
-                <line x1="400" y1="190" x2="480" y2="240" />
-                <line x1="320" y1="240" x2="300" y2="200" />
-                <line x1="480" y1="240" x2="500" y2="200" />
-                <line x1="400" y1="280" x2="350" y2="380" />
-                <line x1="400" y1="280" x2="460" y2="380" />
-                <circle cx="400" cy="190" r="5" fill="#C23A2B" stroke="none" />
-                <circle cx="400" cy="280" r="5" fill="#C23A2B" stroke="none" />
-              </g>
-            </svg>
-          </div>
-        )}
+        <canvas
+          ref={canvasRef}
+          className={`absolute inset-0 w-full h-full pointer-events-none transition-opacity duration-300 ${
+            skeletonOn ? 'opacity-90' : 'opacity-0'
+          }`}
+          aria-hidden
+        />
 
         <button
           type="button"
@@ -239,9 +292,16 @@ export function VideoPlayer({
           {formatTime(currentTime)} / {formatTime(durationSec)}
         </div>
 
-        {skeletonOn && (
-          <div className="absolute top-3 left-3 px-2.5 py-1 rounded seal-stamp text-[11px] bg-black/40">
-            骨架叠加 · ON
+        {statusChip && (
+          <div className="absolute top-3 left-3 flex items-center gap-2">
+            <div className="px-2.5 py-1 rounded seal-stamp text-[11px] bg-black/50 border border-gold/30 text-gold-soft backdrop-blur-sm">
+              {statusChip}
+            </div>
+            <div
+              className={`w-1.5 h-1.5 rounded-full ${
+                mode === 'live' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]' : 'bg-gold/80'
+              }`}
+            />
           </div>
         )}
       </div>
