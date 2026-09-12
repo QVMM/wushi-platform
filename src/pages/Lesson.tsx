@@ -1,12 +1,13 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { formatTime, getStage, type Lesson as LessonType } from '../data/lessons'
 import { useProgress } from '../context/ProgressContext'
 import { VideoPlayer } from '../components/VideoPlayer'
 import { SkeletonPanel } from '../components/SkeletonPanel'
+import { KeyframeNodeCard } from '../components/KeyframeNodeCard'
 import { SealBadge } from '../components/SealBadge'
 import { GoldRule } from '../components/GoldRule'
-import { getIdlePose, type Landmark, type PoseMode } from '../lib/pose'
+import { authoredPoseAtIndex } from '../lib/pose'
 
 type TipTab = 'essentials' | 'mistakes' | 'mnemonic' | 'safety'
 
@@ -16,29 +17,29 @@ export function Lesson() {
   const lesson = lessons.find((l) => l.id === lessonId) ?? null
 
   const [time, setTime] = useState(0)
-  const [skeletonOn, setSkeletonOn] = useState(false)
+  const [analysisOn, setAnalysisOn] = useState(true)
   const [selectedKf, setSelectedKf] = useState<string | null>(null)
   const [tipTab, setTipTab] = useState<TipTab>('essentials')
-  const [poseLandmarks, setPoseLandmarks] = useState<Landmark[]>(() => getIdlePose())
-  const [poseMode, setPoseMode] = useState<PoseMode>('idle')
 
-  const onPoseUpdate = useCallback((landmarks: Landmark[], mode: PoseMode) => {
-    setPoseLandmarks(landmarks)
-    setPoseMode(mode)
-  }, [])
-
-  const activeKf = useMemo(() => {
-    if (!lesson) return null
+  const activeKfIndex = useMemo(() => {
+    if (!lesson || !lesson.keyframes.length) return 0
     if (selectedKf) {
-      const found = lesson.keyframes.find((k) => k.id === selectedKf)
-      if (found) return found
+      const found = lesson.keyframes.findIndex((k) => k.id === selectedKf)
+      if (found >= 0) return found
     }
-    let best = lesson.keyframes[0] ?? null
-    for (const kf of lesson.keyframes) {
-      if (kf.time <= time + 0.5) best = kf
+    let best = 0
+    for (let i = 0; i < lesson.keyframes.length; i++) {
+      if (lesson.keyframes[i].time <= time + 0.5) best = i
     }
     return best
   }, [lesson, selectedKf, time])
+
+  const activeKf = lesson?.keyframes[activeKfIndex] ?? null
+
+  const teachingPose = useMemo(
+    () => authoredPoseAtIndex(activeKfIndex),
+    [activeKfIndex],
+  )
 
   const doneSet = lesson ? (checklistDone[lesson.id] ?? new Set<string>()) : new Set<string>()
 
@@ -104,25 +105,11 @@ export function Lesson() {
             keyframes={lesson.keyframes}
             currentTime={time}
             onTimeChange={handleTime}
-            skeletonOn={skeletonOn}
-            onSkeletonToggle={() => setSkeletonOn((v) => !v)}
+            analysisOn={analysisOn}
+            onAnalysisToggle={() => setAnalysisOn((v) => !v)}
             selectedKeyframeId={selectedKf ?? activeKf?.id ?? null}
             onSelectKeyframe={(id) => setSelectedKf(id)}
-            onPoseUpdate={onPoseUpdate}
           />
-
-          {activeKf && (
-            <div className="rounded-xl border border-ink-border bg-ink-elevated p-4 flex gap-4 items-start">
-              <img src={activeKf.image} alt="" className="w-20 h-14 rounded-md object-cover shrink-0 border border-ink-border" />
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] tabular-nums text-gold">{formatTime(activeKf.time)}</span>
-                  <span className="font-serif text-paper">{activeKf.label}</span>
-                </div>
-                <p className="text-sm text-mist leading-relaxed">{activeKf.tip}</p>
-              </div>
-            </div>
-          )}
 
           <section className="rounded-xl border border-ink-border bg-ink-elevated p-5">
             <h2 className="font-serif text-lg text-paper mb-4">动作拆解时间轴</h2>
@@ -171,7 +158,14 @@ export function Lesson() {
         </div>
 
         <div className="lg:col-span-4 space-y-4">
-          <SkeletonPanel active={skeletonOn} landmarks={poseLandmarks} mode={poseMode} className="min-h-[420px] h-[28rem]" />
+          <SkeletonPanel
+            active={analysisOn}
+            landmarks={teachingPose}
+            keyframeLabel={activeKf?.label}
+            className="min-h-[420px] h-[28rem]"
+          />
+
+          <KeyframeNodeCard keyframe={activeKf} visible={analysisOn} />
 
           <section className="rounded-xl border border-ink-border bg-ink-elevated overflow-hidden">
             <div className="flex border-b border-ink-border">

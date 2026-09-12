@@ -349,8 +349,8 @@ export function drawPoseCanvas(
 }
 
 export function modeLabel(mode: PoseMode): string {
-  if (mode === 'track') return '轨迹回放'
-  if (mode === 'live') return '实时姿态'
+  if (mode === 'track') return '动作示意'
+  if (mode === 'live') return '动作示意'
   if (mode === 'keyframe') return '关键帧驱动'
   return '姿态示意'
 }

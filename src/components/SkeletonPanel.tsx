@@ -5,18 +5,17 @@ import {
   JOINT,
   TEACHING_CONNECTIONS,
   getIdlePose,
-  modeLabel,
   visibleEnough,
   type Landmark,
-  type PoseMode,
 } from '../lib/pose'
 
 interface Props {
-  active: boolean
-  /** @deprecated phase-driven sine pose replaced by landmarks */
-  phase?: number
+  /** Authored teaching pose for the active keyframe */
   landmarks?: Landmark[] | null
-  mode?: PoseMode
+  /** Active keyframe label for subtitle */
+  keyframeLabel?: string | null
+  /** When false, show empty-state prompt */
+  active?: boolean
   className?: string
 }
 
@@ -47,9 +46,9 @@ const PANEL_CONNECTIONS: [number, number][] = TEACHING_CONNECTIONS.filter(
 )
 
 export function SkeletonPanel({
-  active,
   landmarks,
-  mode = 'idle',
+  keyframeLabel,
+  active = true,
   className = '',
 }: Props) {
   const gradId = useId().replace(/:/g, '')
@@ -57,9 +56,6 @@ export function SkeletonPanel({
     if (landmarks && landmarks.length) return landmarks
     return getIdlePose()
   }, [landmarks])
-
-  const showPose = active || Boolean(landmarks?.length)
-  const label = active ? modeLabel(mode === 'idle' ? 'keyframe' : mode) : '姿态示意'
 
   // Auto-fit visible teaching joints into viewBox (~85% fill, uniform scale)
   const pts = useMemo(() => {
@@ -89,7 +85,6 @@ export function SkeletonPanel({
 
     const bw = Math.max(0.04, maxX - minX)
     const bh = Math.max(0.04, maxY - minY)
-    // Padding around bbox before scaling to fill ratio
     const padFrac = 0.08
     const boxW = bw * (1 + padFrac * 2)
     const boxH = bh * (1 + padFrac * 2)
@@ -110,62 +105,58 @@ export function SkeletonPanel({
     }
   }, [pose])
 
-  if (!showPose && !active) {
+  if (!active) {
     return (
-      <div className={`flex items-center justify-center bg-ink-elevated rounded-lg border border-ink-border ${className}`}>
+      <div
+        className={`flex items-center justify-center bg-ink-elevated rounded-lg border border-ink-border ${className}`}
+      >
         <div className="text-center text-mist text-sm px-4">
-          <div className="font-serif text-gold-dim mb-2">姿态骨架</div>
-          <p>开启骨架叠加以查看动作分析示意</p>
+          <div className="font-serif text-gold-dim mb-2">动作示意</div>
+          <p>开启「节点分析」以查看关键帧动作示意</p>
         </div>
       </div>
     )
   }
 
   const { mapped, W, H } = pts
+  const subtitle = keyframeLabel ? `关键帧 · ${keyframeLabel}` : '关键帧'
 
   return (
     <div className={`relative bg-ink-elevated rounded-lg border border-ink-border overflow-hidden ${className}`}>
       <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10 pointer-events-none">
-        <span className="text-[11px] text-gold-dim font-serif tracking-wider">{label}</span>
-        {active && (
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              mode === 'track'
-                ? 'bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.75)]'
-                : mode === 'live'
-                  ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]'
-                  : 'bg-gold/70'
-            }`}
-          />
-        )}
+        <span className="text-[11px] text-gold-dim font-serif tracking-wider">
+          动作示意 · {subtitle}
+        </span>
+        <span className="w-1.5 h-1.5 rounded-full bg-gold/70" />
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" aria-label="动作骨架示意">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" aria-label="动作示意骨架">
         <defs>
           <linearGradient id={`bone-${gradId}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#E8C97A" />
             <stop offset="100%" stopColor={BONE} />
           </linearGradient>
-          <filter id={`glow-${gradId}`} x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="1.2" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
         </defs>
 
-        {/* subtle floor cue near bottom of fitted figure */}
-        <line x1={W * 0.22} y1={H * 0.94} x2={W * 0.78} y2={H * 0.94} stroke="#2A2E3A" strokeWidth="1" />
+        <line
+          x1={W * 0.22}
+          y1={H * 0.94}
+          x2={W * 0.78}
+          y2={H * 0.94}
+          stroke="#2A2E3A"
+          strokeWidth="1"
+        />
 
-        <g filter={`url(#glow-${gradId})`} opacity={active ? 1 : 0.55}>
+        <g opacity={1}>
           {PANEL_CONNECTIONS.map(([a, b], i) => {
             const pa = mapped[a]
             const pb = mapped[b]
             if (!pa || !pb) return null
-            if (!visibleEnough({ x: 0, y: 0, visibility: pa.v }) || !visibleEnough({ x: 0, y: 0, visibility: pb.v })) {
+            if (
+              !visibleEnough({ x: 0, y: 0, visibility: pa.v }) ||
+              !visibleEnough({ x: 0, y: 0, visibility: pb.v })
+            ) {
               return null
             }
-            // Slight inset so bones don't meet in a blob at joints
             const dx = pb.x - pa.x
             const dy = pb.y - pa.y
             const len = Math.hypot(dx, dy) || 1
@@ -180,17 +171,16 @@ export function SkeletonPanel({
                 x2={pb.x - ux * gap}
                 y2={pb.y - uy * gap}
                 stroke={`url(#bone-${gradId})`}
-                strokeWidth="2"
+                strokeWidth="1.35"
                 strokeLinecap="round"
               />
             )
           })}
 
-          {/* Nose as a small head cue (no shoulder lines) */}
           {(() => {
             const p = mapped[IDX.nose]
             if (!p || !visibleEnough({ x: 0, y: 0, visibility: p.v })) return null
-            return <circle cx={p.x} cy={p.y} r="2.25" fill={BONE} opacity={0.9} />
+            return <circle cx={p.x} cy={p.y} r="1.8" fill={BONE} opacity={0.9} />
           })()}
 
           {[
@@ -209,9 +199,7 @@ export function SkeletonPanel({
           ].map((i) => {
             const p = mapped[i]
             if (!p || !visibleEnough({ x: 0, y: 0, visibility: p.v })) return null
-            return (
-              <circle key={i} cx={p.x} cy={p.y} r="2.4" fill={JOINT} />
-            )
+            return <circle key={i} cx={p.x} cy={p.y} r="2.1" fill={JOINT} />
           })}
         </g>
       </svg>

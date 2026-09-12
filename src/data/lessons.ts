@@ -8,7 +8,18 @@ import {
   VIDEO_CLUB,
 } from './media'
 
+import { enrichLessonKeyframes } from './keyframeNodes'
+
 export type StageId = 'beginner' | 'intermediate' | 'advanced' | 'concept'
+
+export interface KeyframeNode {
+  id: string
+  label: string
+  /** Normalized 0–1 position on the keyframe still */
+  x: number
+  y: number
+  note?: string
+}
 
 export interface Keyframe {
   id: string
@@ -16,6 +27,8 @@ export interface Keyframe {
   label: string
   tip: string
   image: string
+  /** Joint markers for keyframe analysis (示意); inferred if omitted */
+  nodes?: KeyframeNode[]
 }
 
 export interface ChecklistItem {
@@ -109,7 +122,7 @@ export const stages: Stage[] = [
   },
 ]
 
-export const lessons: Lesson[] = [
+const rawLessons: Lesson[] = [
   // —— 初级 ——
   {
     id: 'beg-01',
@@ -628,6 +641,8 @@ export const lessons: Lesson[] = [
     ],
   },
 ]
+
+export const lessons: Lesson[] = enrichLessonKeyframes(rawLessons)
 
 export const standardsTerms = [
   { term: '四点步', def: '前后开立、脚掌滚动落地的基础步法，是狮身移动的根基。' },
