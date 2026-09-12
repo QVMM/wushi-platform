@@ -23,10 +23,14 @@ RunningMode = running_mode_module.VisionTaskRunningMode
 MPImage = __import__("mediapipe").Image
 ImageFormat = __import__("mediapipe").ImageFormat
 
+# Consecutive frames with terrible continuity before allowing a person switch
+HYSTERESIS_FRAMES = 5
+# Continuity score below this counts as "terrible" (normalized 0–1 distance/IoU blend)
+SWITCH_THRESHOLD = 0.18
 
-def torso_score(landmarks, w: int, h: int) -> float:
-    """Prefer largest torso bbox near frame center."""
-    # shoulders 11,12 hips 23,24
+
+def torso_center_and_bbox(landmarks, w: int, h: int):
+    """Return (cx, cy, bbox) for torso (shoulders+hips), or None."""
     idxs = [11, 12, 23, 24]
     pts = []
     for i in idxs:
@@ -38,7 +42,6 @@ def torso_score(landmarks, w: int, h: int) -> float:
             continue
         pts.append((lm.x * w, lm.y * h))
     if len(pts) < 2:
-        # fallback: all visible points extent
         xs, ys = [], []
         for lm in landmarks:
             v = getattr(lm, "visibility", 1.0) or 0.0
@@ -47,32 +50,147 @@ def torso_score(landmarks, w: int, h: int) -> float:
             xs.append(lm.x * w)
             ys.append(lm.y * h)
         if len(xs) < 2:
-            return -1.0
-        area = (max(xs) - min(xs)) * (max(ys) - min(ys))
-        cx = (min(xs) + max(xs)) / 2
-        cy = (min(ys) + max(ys)) / 2
-    else:
-        xs = [p[0] for p in pts]
-        ys = [p[1] for p in pts]
-        area = max(1.0, (max(xs) - min(xs)) * (max(ys) - min(ys)))
-        cx = sum(xs) / len(xs)
-        cy = sum(ys) / len(ys)
+            return None
+        minx, maxx = min(xs), max(xs)
+        miny, maxy = min(ys), max(ys)
+        cx = (minx + maxx) / 2
+        cy = (miny + maxy) / 2
+        return cx, cy, (minx, miny, maxx, maxy)
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    minx, maxx = min(xs), max(xs)
+    miny, maxy = min(ys), max(ys)
+    # Expand slightly so bbox has area even if points are colinear
+    if maxx - minx < 8:
+        mid = (minx + maxx) / 2
+        minx, maxx = mid - 4, mid + 4
+    if maxy - miny < 8:
+        mid = (miny + maxy) / 2
+        miny, maxy = mid - 4, mid + 4
+    cx = sum(xs) / len(xs)
+    cy = sum(ys) / len(ys)
+    return cx, cy, (minx, miny, maxx, maxy)
+
+
+def bbox_iou(a, b) -> float:
+    if a is None or b is None:
+        return 0.0
+    ax0, ay0, ax1, ay1 = a
+    bx0, by0, bx1, by1 = b
+    ix0, iy0 = max(ax0, bx0), max(ay0, by0)
+    ix1, iy1 = min(ax1, bx1), min(ay1, by1)
+    iw, ih = max(0.0, ix1 - ix0), max(0.0, iy1 - iy0)
+    inter = iw * ih
+    if inter <= 0:
+        return 0.0
+    area_a = max(1e-6, (ax1 - ax0) * (ay1 - ay0))
+    area_b = max(1e-6, (bx1 - bx0) * (by1 - by0))
+    return inter / (area_a + area_b - inter)
+
+
+def torso_score(landmarks, w: int, h: int) -> float:
+    """Prefer largest torso bbox near frame center (first-frame / reacquire)."""
+    info = torso_center_and_bbox(landmarks, w, h)
+    if info is None:
+        return -1.0
+    cx, cy, (minx, miny, maxx, maxy) = info
+    area = max(1.0, (maxx - minx) * (maxy - miny))
     dist = math.hypot(cx - w / 2, cy - h / 2)
-    # larger area, closer to center
     return area - dist * 8.0
 
 
-def pick_pose(pose_landmarks_list, w: int, h: int):
+def continuity_score(landmarks, w: int, h: int, prev_center, prev_bbox) -> float:
+    """
+    Score favoring spatial continuity with the locked person.
+    Returns ~0–1+ where higher is better match to prev.
+    """
+    info = torso_center_and_bbox(landmarks, w, h)
+    if info is None or prev_center is None:
+        return -1.0
+    cx, cy, bbox = info
+    diag = math.hypot(w, h) or 1.0
+    dist = math.hypot(cx - prev_center[0], cy - prev_center[1])
+    # 1 when identical center, decays as distance grows (half-life ~0.15 of diagonal)
+    dist_score = math.exp(-dist / (0.12 * diag))
+    iou = bbox_iou(bbox, prev_bbox) if prev_bbox is not None else 0.0
+    # Mild size preference: larger torso slightly better among near-equal continuity
+    area = max(1.0, (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]))
+    size_bonus = min(0.15, area / (w * h) * 2.0)
+    return 0.65 * dist_score + 0.35 * iou + size_bonus
+
+
+def pick_pose(
+    pose_landmarks_list,
+    w: int,
+    h: int,
+    prev_center=None,
+    prev_bbox=None,
+    bad_streak: int = 0,
+):
+    """
+    Lock onto one person across frames.
+    First frame (no prev): largest torso near center.
+    Later: heavily prefer continuity; only switch after HYSTERESIS_FRAMES of terrible scores.
+    Returns (landmarks | None, new_center, new_bbox, new_bad_streak).
+    """
     if not pose_landmarks_list:
-        return None
-    best = None
-    best_s = -1e18
+        return None, prev_center, prev_bbox, bad_streak + 1 if prev_center is not None else 0
+
+    if prev_center is None:
+        best = None
+        best_s = -1e18
+        for pl in pose_landmarks_list:
+            s = torso_score(pl, w, h)
+            if s > best_s:
+                best_s = s
+                best = pl
+        if best is None:
+            return None, None, None, 0
+        info = torso_center_and_bbox(best, w, h)
+        if info is None:
+            return best, None, None, 0
+        cx, cy, bbox = info
+        return best, (cx, cy), bbox, 0
+
+    # Score all detections by continuity
+    scored = []
+    for pl in pose_landmarks_list:
+        s = continuity_score(pl, w, h, prev_center, prev_bbox)
+        scored.append((s, pl))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    best_s, best = scored[0]
+
+    if best_s >= SWITCH_THRESHOLD:
+        info = torso_center_and_bbox(best, w, h)
+        if info is None:
+            return best, prev_center, prev_bbox, 0
+        cx, cy, bbox = info
+        return best, (cx, cy), bbox, 0
+
+    # Continuity terrible — stick with best continuity candidate unless hysteresis exhausted
+    new_streak = bad_streak + 1
+    if new_streak < HYSTERESIS_FRAMES:
+        # Still prefer best continuity match (even if weak) to avoid flicker
+        info = torso_center_and_bbox(best, w, h)
+        if info is None:
+            return best, prev_center, prev_bbox, new_streak
+        cx, cy, bbox = info
+        return best, (cx, cy), bbox, new_streak
+
+    # Reacquire: pick by torso_score (size+center), allow person switch
+    reacq = None
+    reacq_s = -1e18
     for pl in pose_landmarks_list:
         s = torso_score(pl, w, h)
-        if s > best_s:
-            best_s = s
-            best = pl
-    return best
+        if s > reacq_s:
+            reacq_s = s
+            reacq = pl
+    chosen = reacq if reacq is not None else best
+    info = torso_center_and_bbox(chosen, w, h)
+    if info is None:
+        return chosen, prev_center, prev_bbox, 0
+    cx, cy, bbox = info
+    return chosen, (cx, cy), bbox, 0
 
 
 def round4(x: float) -> float:
@@ -131,6 +249,9 @@ def extract(
     idx = 0
     written = 0
     last_lm = None
+    prev_center = None
+    prev_bbox = None
+    bad_streak = 0
 
     while True:
         ok, bgr = cap.read()
@@ -145,12 +266,22 @@ def extract(
             mp_image = MPImage(image_format=ImageFormat.SRGB, data=rgb)
             ts_ms = int(t * 1000)
             result = landmarker.detect_for_video(mp_image, ts_ms)
-            chosen = pick_pose(result.pose_landmarks or [], w, h)
+            chosen, prev_center, prev_bbox, bad_streak = pick_pose(
+                result.pose_landmarks or [],
+                w,
+                h,
+                prev_center=prev_center,
+                prev_bbox=prev_bbox,
+                bad_streak=bad_streak,
+            )
             if chosen is not None:
                 lm = landmarks_to_lm(chosen)
                 last_lm = lm
             else:
                 lm = last_lm
+                # No detection: keep prev lock; bump bad streak lightly
+                if prev_center is not None:
+                    bad_streak = min(bad_streak + 1, HYSTERESIS_FRAMES)
             if lm is not None:
                 frames.append({"t": round4(t), "lm": lm})
                 written += 1

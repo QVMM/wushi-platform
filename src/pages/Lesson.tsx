@@ -171,7 +171,7 @@ export function Lesson() {
         </div>
 
         <div className="lg:col-span-4 space-y-4">
-          <SkeletonPanel active={skeletonOn} landmarks={poseLandmarks} mode={poseMode} className="h-64" />
+          <SkeletonPanel active={skeletonOn} landmarks={poseLandmarks} mode={poseMode} className="min-h-[420px] h-[28rem]" />
 
           <section className="rounded-xl border border-ink-border bg-ink-elevated overflow-hidden">
             <div className="flex border-b border-ink-border">

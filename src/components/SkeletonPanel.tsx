@@ -20,6 +20,32 @@ interface Props {
   className?: string
 }
 
+/** Teaching joints used for bbox auto-fit (upper body + legs). */
+const FIT_JOINTS = [
+  IDX.nose,
+  IDX.leftShoulder,
+  IDX.rightShoulder,
+  IDX.leftElbow,
+  IDX.rightElbow,
+  IDX.leftWrist,
+  IDX.rightWrist,
+  IDX.leftHip,
+  IDX.rightHip,
+  IDX.leftKnee,
+  IDX.rightKnee,
+  IDX.leftAnkle,
+  IDX.rightAnkle,
+] as const
+
+/** Prefer torso/limb bones; drop nose–shoulder links that clutter when zoomed. */
+const PANEL_CONNECTIONS: [number, number][] = TEACHING_CONNECTIONS.filter(
+  ([a, b]) =>
+    !(
+      (a === IDX.nose && (b === IDX.leftShoulder || b === IDX.rightShoulder)) ||
+      (b === IDX.nose && (a === IDX.leftShoulder || a === IDX.rightShoulder))
+    ),
+)
+
 export function SkeletonPanel({
   active,
   landmarks,
@@ -35,21 +61,47 @@ export function SkeletonPanel({
   const showPose = active || Boolean(landmarks?.length)
   const label = active ? modeLabel(mode === 'idle' ? 'keyframe' : mode) : '姿态示意'
 
-  // Map normalized landmarks into panel viewBox (front teaching view)
+  // Auto-fit visible teaching joints into viewBox (~85% fill, uniform scale)
   const pts = useMemo(() => {
-    const W = 240
-    const H = 280
-    const padX = 20
-    const padY = 36
-    const innerW = W - padX * 2
-    const innerH = H - padY - 30
+    const W = 320
+    const H = 420
+    const fill = 0.85
 
-    // Fit teaching figure into panel with slight vertical bias
-    const map = (lm: Landmark) => ({
-      x: padX + lm.x * innerW,
-      y: padY + lm.y * innerH,
-      v: lm.visibility ?? 1,
-    })
+    const visible: { x: number; y: number; i: number }[] = []
+    for (const i of FIT_JOINTS) {
+      const lm = pose[i]
+      if (!lm) continue
+      const v = lm.visibility ?? 1
+      if (!visibleEnough({ x: lm.x, y: lm.y, visibility: v })) continue
+      visible.push({ x: lm.x, y: lm.y, i })
+    }
+
+    let minX = 0
+    let maxX = 1
+    let minY = 0
+    let maxY = 1
+    if (visible.length >= 2) {
+      minX = Math.min(...visible.map((p) => p.x))
+      maxX = Math.max(...visible.map((p) => p.x))
+      minY = Math.min(...visible.map((p) => p.y))
+      maxY = Math.max(...visible.map((p) => p.y))
+    }
+
+    const bw = Math.max(0.04, maxX - minX)
+    const bh = Math.max(0.04, maxY - minY)
+    // Padding around bbox before scaling to fill ratio
+    const padFrac = 0.08
+    const boxW = bw * (1 + padFrac * 2)
+    const boxH = bh * (1 + padFrac * 2)
+    const cx = (minX + maxX) / 2
+    const cy = (minY + maxY) / 2
+
+    const scale = Math.min((W * fill) / boxW, (H * fill) / boxH)
+    const map = (lm: Landmark) => {
+      const x = W / 2 + (lm.x - cx) * scale
+      const y = H / 2 + (lm.y - cy) * scale
+      return { x, y, v: lm.visibility ?? 1 }
+    }
 
     return {
       W,
@@ -89,12 +141,12 @@ export function SkeletonPanel({
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" aria-label="动作骨架示意">
         <defs>
-          <linearGradient id={`bone-${gradId}`} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor={BONE} />
-            <stop offset="100%" stopColor={JOINT} />
+          <linearGradient id={`bone-${gradId}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#E8C97A" />
+            <stop offset="100%" stopColor={BONE} />
           </linearGradient>
-          <filter id={`glow-${gradId}`} x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation="3.0" result="blur" />
+          <filter id={`glow-${gradId}`} x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="1.2" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
@@ -102,32 +154,46 @@ export function SkeletonPanel({
           </filter>
         </defs>
 
-        <line x1="40" y1="250" x2="200" y2="250" stroke="#2A2E3A" strokeWidth="1" />
+        {/* subtle floor cue near bottom of fitted figure */}
+        <line x1={W * 0.22} y1={H * 0.94} x2={W * 0.78} y2={H * 0.94} stroke="#2A2E3A" strokeWidth="1" />
 
         <g filter={`url(#glow-${gradId})`} opacity={active ? 1 : 0.55}>
-          {TEACHING_CONNECTIONS.map(([a, b], i) => {
+          {PANEL_CONNECTIONS.map(([a, b], i) => {
             const pa = mapped[a]
             const pb = mapped[b]
             if (!pa || !pb) return null
             if (!visibleEnough({ x: 0, y: 0, visibility: pa.v }) || !visibleEnough({ x: 0, y: 0, visibility: pb.v })) {
               return null
             }
+            // Slight inset so bones don't meet in a blob at joints
+            const dx = pb.x - pa.x
+            const dy = pb.y - pa.y
+            const len = Math.hypot(dx, dy) || 1
+            const gap = Math.min(4.5, len * 0.08)
+            const ux = dx / len
+            const uy = dy / len
             return (
               <line
                 key={i}
-                x1={pa.x}
-                y1={pa.y}
-                x2={pb.x}
-                y2={pb.y}
+                x1={pa.x + ux * gap}
+                y1={pa.y + uy * gap}
+                x2={pb.x - ux * gap}
+                y2={pb.y - uy * gap}
                 stroke={`url(#bone-${gradId})`}
-                strokeWidth="3.25"
+                strokeWidth="2"
                 strokeLinecap="round"
               />
             )
           })}
 
+          {/* Nose as a small head cue (no shoulder lines) */}
+          {(() => {
+            const p = mapped[IDX.nose]
+            if (!p || !visibleEnough({ x: 0, y: 0, visibility: p.v })) return null
+            return <circle cx={p.x} cy={p.y} r="2.25" fill={BONE} opacity={0.9} />
+          })()}
+
           {[
-            IDX.nose,
             IDX.leftShoulder,
             IDX.rightShoulder,
             IDX.leftElbow,
@@ -144,10 +210,7 @@ export function SkeletonPanel({
             const p = mapped[i]
             if (!p || !visibleEnough({ x: 0, y: 0, visibility: p.v })) return null
             return (
-              <g key={i}>
-                <circle cx={p.x} cy={p.y} r="5" fill="#0B0C0F" stroke={JOINT} strokeWidth="1.6" />
-                <circle cx={p.x} cy={p.y} r="2" fill={BONE} />
-              </g>
+              <circle key={i} cx={p.x} cy={p.y} r="2.4" fill={JOINT} />
             )
           })}
         </g>
