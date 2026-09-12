@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { formatTime, type Keyframe } from '../data/lessons'
+import { poseTrackUrlForVideo } from '../data/poseTracks'
+import { usePoseTrack } from '../hooks/usePoseTrack'
+import { drawPoseCanvas } from '../lib/pose'
 
 interface Props {
   poster: string
@@ -8,7 +11,10 @@ interface Props {
   keyframes: Keyframe[]
   currentTime: number
   onTimeChange: (t: number) => void
-  /** Controls side-panel keyframe / node analysis visibility */
+  /** Video overlay: offline pose-track 跟拍骨架 */
+  trackOn: boolean
+  onTrackToggle: () => void
+  /** Right-panel teaching analysis 节点分析 */
   analysisOn: boolean
   onAnalysisToggle: () => void
   selectedKeyframeId: string | null
@@ -22,6 +28,8 @@ export function VideoPlayer({
   keyframes,
   currentTime,
   onTimeChange,
+  trackOn,
+  onTrackToggle,
   analysisOn,
   onAnalysisToggle,
   selectedKeyframeId,
@@ -31,6 +39,7 @@ export function VideoPlayer({
   const [rate, setRate] = useState(1)
   const [displayPoster, setDisplayPoster] = useState(poster)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const timeRef = useRef(currentTime)
   const rateRef = useRef(rate)
   const durationRef = useRef(durationSec)
@@ -39,10 +48,39 @@ export function VideoPlayer({
   const last = useRef<number>(0)
   const hasVideo = Boolean(videoUrl)
 
+  const poseTrackUrl = useMemo(() => poseTrackUrlForVideo(videoUrl), [videoUrl])
+  const { landmarks, hasTrack } = usePoseTrack({
+    enabled: trackOn,
+    currentTime,
+    poseTrackUrl,
+  })
+
   timeRef.current = currentTime
   rateRef.current = rate
   durationRef.current = durationSec
   onTimeChangeRef.current = onTimeChange
+
+  // Draw thin gold/vermillion track overlay on video
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    if (!trackOn || !hasTrack) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      return
+    }
+
+    const parent = canvas.parentElement
+    const w = parent?.clientWidth || 800
+    const h = parent?.clientHeight || 450
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w
+      canvas.height = h
+    }
+    drawPoseCanvas(ctx, landmarks, canvas.width, canvas.height, { thin: true })
+  }, [landmarks, trackOn, hasTrack])
 
   // Keyframe stills as fallback poster when no HTML5 video
   useEffect(() => {
@@ -221,6 +259,14 @@ export function VideoPlayer({
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 pointer-events-none" />
 
+        <canvas
+          ref={canvasRef}
+          className={`absolute inset-0 w-full h-full pointer-events-none transition-opacity duration-300 ${
+            trackOn && hasTrack ? 'opacity-95' : 'opacity-0'
+          }`}
+          aria-hidden
+        />
+
         <button
           type="button"
           onClick={togglePlay}
@@ -239,10 +285,19 @@ export function VideoPlayer({
         <div className="absolute top-3 right-3 px-2.5 py-1 rounded bg-black/60 text-xs tabular-nums text-paper-dim border border-white/10">
           {formatTime(currentTime)} / {formatTime(durationSec)}
         </div>
+
+        {trackOn && hasTrack && (
+          <div className="absolute top-3 left-3 flex items-center gap-2">
+            <div className="px-2.5 py-1 rounded text-[11px] bg-black/50 border border-gold/30 text-gold-soft backdrop-blur-sm">
+              跟拍骨架
+            </div>
+            <div className="w-1.5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.75)]" />
+          </div>
+        )}
       </div>
 
       <div className="px-4 py-3 space-y-3 border-t border-ink-border bg-ink-soft/80">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
             type="button"
             onClick={togglePlay}
@@ -263,7 +318,7 @@ export function VideoPlayer({
             step={0.1}
             value={Math.min(currentTime, durationSec)}
             onChange={scrub}
-            className="flex-1 accent-gold h-1.5 cursor-pointer"
+            className="flex-1 min-w-[8rem] accent-gold h-1.5 cursor-pointer"
             aria-label="进度"
           />
 
@@ -284,12 +339,26 @@ export function VideoPlayer({
 
           <button
             type="button"
+            onClick={onTrackToggle}
+            className={`px-2.5 py-1.5 rounded-md text-xs border transition-colors ${
+              trackOn
+                ? 'border-sky-400/50 bg-sky-400/15 text-sky-200'
+                : 'border-ink-border text-mist hover:text-paper hover:border-mist/40'
+            }`}
+            title="在视频上叠加离线跟拍骨架"
+          >
+            跟拍骨架
+          </button>
+
+          <button
+            type="button"
             onClick={onAnalysisToggle}
             className={`px-2.5 py-1.5 rounded-md text-xs border transition-colors ${
               analysisOn
                 ? 'border-gold/50 bg-gold/15 text-gold-soft'
                 : 'border-ink-border text-mist hover:text-paper hover:border-mist/40'
             }`}
+            title="右侧示意分析 / 动作解析"
           >
             节点分析
           </button>

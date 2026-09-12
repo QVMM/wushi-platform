@@ -1,8 +1,10 @@
 import { useId, useMemo } from 'react'
 import {
   BONE,
+  BONE_LEGEND,
   IDX,
   JOINT,
+  JOINT_LABELS,
   TEACHING_CONNECTIONS,
   getIdlePose,
   visibleEnough,
@@ -14,8 +16,12 @@ interface Props {
   landmarks?: Landmark[] | null
   /** Active keyframe label for subtitle */
   keyframeLabel?: string | null
+  /** Tip text under the diagram */
+  tip?: string | null
   /** When false, show empty-state prompt */
   active?: boolean
+  /** Show simplified bone legend */
+  showLegend?: boolean
   className?: string
 }
 
@@ -48,7 +54,9 @@ const PANEL_CONNECTIONS: [number, number][] = TEACHING_CONNECTIONS.filter(
 export function SkeletonPanel({
   landmarks,
   keyframeLabel,
+  tip,
   active = true,
+  showLegend = true,
   className = '',
 }: Props) {
   const gradId = useId().replace(/:/g, '')
@@ -57,11 +65,11 @@ export function SkeletonPanel({
     return getIdlePose()
   }, [landmarks])
 
-  // Auto-fit visible teaching joints into viewBox (~85% fill, uniform scale)
+  // Auto-fit visible teaching joints into viewBox (~78% fill — room for labels)
   const pts = useMemo(() => {
-    const W = 320
-    const H = 420
-    const fill = 0.85
+    const W = 340
+    const H = 440
+    const fill = 0.72
 
     const visible: { x: number; y: number; i: number }[] = []
     for (const i of FIT_JOINTS) {
@@ -85,7 +93,7 @@ export function SkeletonPanel({
 
     const bw = Math.max(0.04, maxX - minX)
     const bh = Math.max(0.04, maxY - minY)
-    const padFrac = 0.08
+    const padFrac = 0.12
     const boxW = bw * (1 + padFrac * 2)
     const boxH = bh * (1 + padFrac * 2)
     const cx = (minX + maxX) / 2
@@ -111,7 +119,7 @@ export function SkeletonPanel({
         className={`flex items-center justify-center bg-ink-elevated rounded-lg border border-ink-border ${className}`}
       >
         <div className="text-center text-mist text-sm px-4">
-          <div className="font-serif text-gold-dim mb-2">动作示意</div>
+          <div className="font-serif text-gold-dim mb-2">示意分析</div>
           <p>开启「节点分析」以查看关键帧动作示意</p>
         </div>
       </div>
@@ -125,7 +133,7 @@ export function SkeletonPanel({
     <div className={`relative bg-ink-elevated rounded-lg border border-ink-border overflow-hidden ${className}`}>
       <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10 pointer-events-none">
         <span className="text-[11px] text-gold-dim font-serif tracking-wider">
-          动作示意 · {subtitle}
+          示意分析 · {subtitle}
         </span>
         <span className="w-1.5 h-1.5 rounded-full bg-gold/70" />
       </div>
@@ -180,7 +188,7 @@ export function SkeletonPanel({
           {(() => {
             const p = mapped[IDX.nose]
             if (!p || !visibleEnough({ x: 0, y: 0, visibility: p.v })) return null
-            return <circle cx={p.x} cy={p.y} r="1.8" fill={BONE} opacity={0.9} />
+            return <circle cx={p.x} cy={p.y} r="2.2" fill={BONE} opacity={0.9} />
           })()}
 
           {[
@@ -199,10 +207,68 @@ export function SkeletonPanel({
           ].map((i) => {
             const p = mapped[i]
             if (!p || !visibleEnough({ x: 0, y: 0, visibility: p.v })) return null
-            return <circle key={i} cx={p.x} cy={p.y} r="2.1" fill={JOINT} />
+            return <circle key={i} cx={p.x} cy={p.y} r="2.4" fill={JOINT} />
+          })}
+
+          {/* Chinese joint labels next to nodes */}
+          {JOINT_LABELS.map(({ index, label, side }) => {
+            const p = mapped[index]
+            if (!p || !visibleEnough({ x: 0, y: 0, visibility: p.v })) return null
+            const isLeft = side === 'L'
+            const isRight = side === 'R'
+            const isHead = index === IDX.nose
+            let lx = p.x
+            let ly = p.y
+            let anchor: 'start' | 'middle' | 'end' = 'middle'
+            if (isHead) {
+              ly = p.y - 14
+            } else if (isLeft) {
+              lx = p.x - 10
+              anchor = 'end'
+            } else if (isRight) {
+              lx = p.x + 10
+              anchor = 'start'
+            }
+            return (
+              <text
+                key={`lbl-${index}`}
+                x={lx}
+                y={ly}
+                textAnchor={anchor}
+                dominantBaseline="middle"
+                fill="#E8C97A"
+                fontSize="11"
+                fontFamily="serif"
+                opacity={0.92}
+              >
+                {label}
+              </text>
+            )
           })}
         </g>
       </svg>
+
+      {(tip || showLegend) && (
+        <div className="px-3 pb-3 space-y-2 border-t border-ink-border/60 bg-ink-soft/40">
+          {tip && (
+            <p className="pt-2 text-xs text-mist leading-relaxed">{tip}</p>
+          )}
+          {showLegend && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {BONE_LEGEND.map((item) => (
+                <span
+                  key={item.label}
+                  className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border border-ink-border/70 text-paper-dim bg-ink/40"
+                  title={item.desc}
+                >
+                  <span className="text-gold-soft font-serif">{item.label}</span>
+                  <span className="text-mist hidden sm:inline">· {item.desc}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

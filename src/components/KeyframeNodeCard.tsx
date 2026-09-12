@@ -3,10 +3,12 @@ import { formatTime, type Keyframe, type KeyframeNode } from '../data/lessons'
 interface Props {
   keyframe: Keyframe | null
   visible?: boolean
+  /** Strip outer chrome when nested inside ActionAnalysisCard */
+  embedded?: boolean
   className?: string
 }
 
-export function KeyframeNodeCard({ keyframe, visible = true, className = '' }: Props) {
+export function KeyframeNodeCard({ keyframe, visible = true, embedded = false, className = '' }: Props) {
   if (!visible) {
     return (
       <div
@@ -31,8 +33,14 @@ export function KeyframeNodeCard({ keyframe, visible = true, className = '' }: P
 
   const nodes: KeyframeNode[] = keyframe.nodes ?? []
 
+  const Wrapper: 'section' | 'div' = embedded ? 'div' : 'section'
+  const wrapClass = embedded
+    ? `overflow-hidden ${className}`
+    : `rounded-xl border border-ink-border bg-ink-elevated overflow-hidden ${className}`
+
   return (
-    <section className={`rounded-xl border border-ink-border bg-ink-elevated overflow-hidden ${className}`}>
+    <Wrapper className={wrapClass}>
+      {!embedded && (
       <div className="px-3 pt-3 pb-2 flex items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="text-[11px] text-gold-dim font-serif tracking-wider">关键帧分析 · 关节节点</div>
@@ -43,8 +51,19 @@ export function KeyframeNodeCard({ keyframe, visible = true, className = '' }: P
         </div>
         <span className="text-[10px] text-mist shrink-0 tabular-nums">{nodes.length} 节点</span>
       </div>
+      )}
 
-      <div className="relative mx-3 mb-3 rounded-lg overflow-hidden border border-ink-border bg-black aspect-video">
+      {embedded && (
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[11px] tabular-nums text-gold">{formatTime(keyframe.time)}</span>
+            <span className="font-serif text-sm text-paper truncate">{keyframe.label}</span>
+          </div>
+          <span className="text-[10px] text-mist shrink-0 tabular-nums">{nodes.length} 节点</span>
+        </div>
+      )}
+
+      <div className={`relative rounded-lg overflow-hidden border border-ink-border bg-black aspect-video ${embedded ? '' : 'mx-3 mb-3'}`}>
         <img
           src={keyframe.image}
           alt={keyframe.label}
@@ -74,7 +93,7 @@ export function KeyframeNodeCard({ keyframe, visible = true, className = '' }: P
         ))}
       </div>
 
-      <div className="px-3 pb-3 space-y-2">
+      <div className={`${embedded ? 'mt-2' : 'px-3 pb-3'} space-y-2`}>
         <p className="text-sm text-mist leading-relaxed">{keyframe.tip}</p>
         {nodes.length > 0 && (
           <ul className="grid grid-cols-2 gap-1.5">
@@ -95,6 +114,6 @@ export function KeyframeNodeCard({ keyframe, visible = true, className = '' }: P
           </ul>
         )}
       </div>
-    </section>
+    </Wrapper>
   )
 }

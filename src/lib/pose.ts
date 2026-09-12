@@ -279,11 +279,12 @@ export function drawPoseCanvas(
   landmarks: Landmark[],
   width: number,
   height: number,
-  opts?: { mirrorX?: boolean },
+  opts?: { mirrorX?: boolean; thin?: boolean },
 ): void {
   ctx.clearRect(0, 0, width, height)
   if (!landmarks.length) return
 
+  const thin = opts?.thin !== false // default thin clean overlay
   const px = (lm: Landmark) => (opts?.mirrorX ? 1 - lm.x : lm.x) * width
   const py = (lm: Landmark) => lm.y * height
 
@@ -291,11 +292,17 @@ export function drawPoseCanvas(
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
 
-  // Soft glow pass (thicker, more visible)
-  ctx.shadowColor = 'rgba(198, 161, 91, 0.75)'
-  ctx.shadowBlur = 18
-  ctx.strokeStyle = BONE
-  ctx.lineWidth = 4.5
+  if (thin) {
+    ctx.shadowColor = 'rgba(198, 161, 91, 0.35)'
+    ctx.shadowBlur = 6
+    ctx.strokeStyle = BONE
+    ctx.lineWidth = 1.6
+  } else {
+    ctx.shadowColor = 'rgba(198, 161, 91, 0.75)'
+    ctx.shadowBlur = 18
+    ctx.strokeStyle = BONE
+    ctx.lineWidth = 4.5
+  }
 
   for (const [a, b] of TEACHING_CONNECTIONS) {
     const la = landmarks[a]
@@ -308,8 +315,8 @@ export function drawPoseCanvas(
   }
 
   // Joints
-  ctx.shadowColor = 'rgba(194, 58, 43, 0.55)'
-  ctx.shadowBlur = 14
+  ctx.shadowColor = thin ? 'rgba(194, 58, 43, 0.35)' : 'rgba(194, 58, 43, 0.55)'
+  ctx.shadowBlur = thin ? 5 : 14
   const joints = [
     IDX.nose,
     IDX.leftShoulder,
@@ -330,18 +337,21 @@ export function drawPoseCanvas(
     if (!visibleEnough(lm)) continue
     const x = px(lm)
     const y = py(lm)
+    const rOuter = thin ? 3.2 : 5.5
+    const rMid = thin ? 2.6 : 4.5
+    const rInner = thin ? 1.2 : 2
     ctx.beginPath()
     ctx.fillStyle = '#0B0C0F'
-    ctx.arc(x, y, 5.5, 0, Math.PI * 2)
+    ctx.arc(x, y, rOuter, 0, Math.PI * 2)
     ctx.fill()
     ctx.beginPath()
     ctx.strokeStyle = JOINT
-    ctx.lineWidth = 2
-    ctx.arc(x, y, 4.5, 0, Math.PI * 2)
+    ctx.lineWidth = thin ? 1.25 : 2
+    ctx.arc(x, y, rMid, 0, Math.PI * 2)
     ctx.stroke()
     ctx.beginPath()
     ctx.fillStyle = BONE
-    ctx.arc(x, y, 2, 0, Math.PI * 2)
+    ctx.arc(x, y, rInner, 0, Math.PI * 2)
     ctx.fill()
   }
 
@@ -349,11 +359,38 @@ export function drawPoseCanvas(
 }
 
 export function modeLabel(mode: PoseMode): string {
-  if (mode === 'track') return '动作示意'
-  if (mode === 'live') return '动作示意'
+  if (mode === 'track') return '跟拍骨架'
+  if (mode === 'live') return '实时骨架'
   if (mode === 'keyframe') return '关键帧驱动'
   return '姿态示意'
 }
+
+/** Chinese joint labels for teaching schematic (头/肩/肘/腕/髋/膝/踝) */
+export const JOINT_LABELS: { index: number; label: string; side?: 'L' | 'R' }[] = [
+  { index: IDX.nose, label: '头' },
+  { index: IDX.leftShoulder, label: '肩', side: 'L' },
+  { index: IDX.rightShoulder, label: '肩', side: 'R' },
+  { index: IDX.leftElbow, label: '肘', side: 'L' },
+  { index: IDX.rightElbow, label: '肘', side: 'R' },
+  { index: IDX.leftWrist, label: '腕', side: 'L' },
+  { index: IDX.rightWrist, label: '腕', side: 'R' },
+  { index: IDX.leftHip, label: '髋', side: 'L' },
+  { index: IDX.rightHip, label: '髋', side: 'R' },
+  { index: IDX.leftKnee, label: '膝', side: 'L' },
+  { index: IDX.rightKnee, label: '膝', side: 'R' },
+  { index: IDX.leftAnkle, label: '踝', side: 'L' },
+  { index: IDX.rightAnkle, label: '踝', side: 'R' },
+]
+
+export const BONE_LEGEND = [
+  { label: '头', desc: '目视与头部控制' },
+  { label: '肩', desc: '沉肩、肩线水平' },
+  { label: '肘', desc: '弹性缓冲 / 锁定' },
+  { label: '腕', desc: '握持与推杆' },
+  { label: '髋', desc: '重心与发力' },
+  { label: '膝', desc: '屈膝缓冲' },
+  { label: '踝', desc: '足心承重' },
+] as const
 
 /** Compact offline pose track JSON shape */
 export interface PoseTrackFrame {

@@ -3,8 +3,7 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import { formatTime, getStage, type Lesson as LessonType } from '../data/lessons'
 import { useProgress } from '../context/ProgressContext'
 import { VideoPlayer } from '../components/VideoPlayer'
-import { SkeletonPanel } from '../components/SkeletonPanel'
-import { KeyframeNodeCard } from '../components/KeyframeNodeCard'
+import { ActionAnalysisCard } from '../components/ActionAnalysisCard'
 import { SealBadge } from '../components/SealBadge'
 import { GoldRule } from '../components/GoldRule'
 import { authoredPoseAtIndex } from '../lib/pose'
@@ -17,6 +16,7 @@ export function Lesson() {
   const lesson = lessons.find((l) => l.id === lessonId) ?? null
 
   const [time, setTime] = useState(0)
+  const [trackOn, setTrackOn] = useState(true)
   const [analysisOn, setAnalysisOn] = useState(true)
   const [selectedKf, setSelectedKf] = useState<string | null>(null)
   const [tipTab, setTipTab] = useState<TipTab>('essentials')
@@ -105,6 +105,8 @@ export function Lesson() {
             keyframes={lesson.keyframes}
             currentTime={time}
             onTimeChange={handleTime}
+            trackOn={trackOn}
+            onTrackToggle={() => setTrackOn((v) => !v)}
             analysisOn={analysisOn}
             onAnalysisToggle={() => setAnalysisOn((v) => !v)}
             selectedKeyframeId={selectedKf ?? activeKf?.id ?? null}
@@ -158,14 +160,11 @@ export function Lesson() {
         </div>
 
         <div className="lg:col-span-4 space-y-4">
-          <SkeletonPanel
-            active={analysisOn}
+          <ActionAnalysisCard
+            keyframe={activeKf}
             landmarks={teachingPose}
-            keyframeLabel={activeKf?.label}
-            className="min-h-[420px] h-[28rem]"
+            visible={analysisOn}
           />
-
-          <KeyframeNodeCard keyframe={activeKf} visible={analysisOn} />
 
           <section className="rounded-xl border border-ink-border bg-ink-elevated overflow-hidden">
             <div className="flex border-b border-ink-border">

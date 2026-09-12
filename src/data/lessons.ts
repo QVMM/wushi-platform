@@ -9,6 +9,15 @@ import {
 } from './media'
 
 import { enrichLessonKeyframes } from './keyframeNodes'
+import {
+  ADVANCED_STILLS,
+  BEGINNER_STILLS,
+  CLASSROOM_STILLS,
+  CLUB_STILLS,
+  INTERMEDIATE_STILLS,
+  keyframesFromStills,
+  type StillOverrides,
+} from './stageStills'
 
 export type StageId = 'beginner' | 'intermediate' | 'advanced' | 'concept'
 
@@ -122,6 +131,62 @@ export const stages: Stage[] = [
   },
 ]
 
+
+/** Per-lesson label/tip overrides keyed by still timestamp (seconds). */
+const BEG_OVERRIDES: Record<string, StillOverrides> = {
+  'beg-01': {},
+  'beg-02': {
+    9: { label: '四点落位', tip: '前后脚开立约肩宽，脚尖略外展。' },
+    28: { label: '移重心', tip: '重心平滑前移，后脚跟轻提。' },
+    90: { label: '起伏配合', tip: '狮头随步幅轻微起伏，避免上下脱节。' },
+    117: { label: '换步回转', tip: '换步时保持上身稳定，脚掌滚动落地。' },
+  },
+  'beg-03': {
+    9: { label: '准备位', tip: '狮嘴微闭，头部居中。' },
+    28: { label: '开合节奏', tip: '拇指推杆控制开合，节奏清晰。' },
+    90: { label: '点头示意', tip: '点头幅度小而有力，配合开合。' },
+    117: { label: '眨眼收束', tip: '眨眼与点头交替，避免机械重复。' },
+  },
+  'beg-04': {
+    9: { label: '起势', tip: '静立起势，目光向前。' },
+    28: { label: '行进段', tip: '四点步行进，狮头轻起伏。' },
+    90: { label: '表情段', tip: '定点开合点头，展现精神。' },
+    117: { label: '收势', tip: '回中收势，气息下沉。' },
+  },
+}
+
+const INT_OVERRIDES: Record<string, StillOverrides> = {
+  'int-01': {},
+  'int-02': {
+    2: { label: '蓄力下蹲', tip: '双人同步下蹲蓄力。' },
+    7: { label: '启动上升', tip: '腿部发力主导，手臂辅助。' },
+    37: { label: '过腰到位', tip: '架体过腰后减速控制。' },
+    66: { label: '顶点锁定', tip: '肘锁死，核心收紧稳定。' },
+    70: { label: '微幅调整', tip: '微调重心，狮头保持水平。' },
+    97: { label: '稳持计时', tip: '稳持 3–5 秒，呼吸均匀。' },
+    101: { label: '预备下落', tip: '口令预备，准备同步下落。' },
+  },
+  'int-03': {
+    2: { label: '预备口令', tip: '口令「落」前双方对视确认。' },
+    7: { label: '同步下落', tip: '膝屈引导，速度可控。' },
+    37: { label: '缓冲触地', tip: '脚掌先触地，屈膝吸震。' },
+    66: { label: '架体回收', tip: '架体平稳回收至腰侧。' },
+    70: { label: '换位启动', tip: '侧步换位，保持接触点。' },
+    97: { label: '新站位定型', tip: '换位后重新定型确认。' },
+    101: { label: '连贯复练', tip: '连续三次下落换位。' },
+  },
+}
+
+const ADV_OVERRIDES: Record<string, StillOverrides> = {
+  'adv-01': {},
+  'adv-02': {
+    9: { label: '登场', tip: '完整狮头登场，气势开场。' },
+    54: { label: '高桩亮相', tip: '高桩定点亮相 2 拍。' },
+    100: { label: '流转', tip: '桩间流转，狮头表情丰富。' },
+    107: { label: '收场', tip: '下桩收场，定型谢幕。' },
+  },
+}
+
 const rawLessons: Lesson[] = [
   // —— 初级 ——
   {
@@ -139,12 +204,7 @@ const rawLessons: Lesson[] = [
     progress: 100,
     summary: '通过线框狮头熟悉握持点、肩肘联动与静态重心，为后续步法打下基础。',
     tags: ['握持', '重心', '线框'],
-    keyframes: [
-      { id: 'b1-k1', time: 9, label: '握持定位', tip: '双手对称握框，肘微屈，肩放松下沉。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573936' },
-      { id: 'b1-k2', time: 28, label: '重心下沉', tip: '膝微屈，重心落于足心，上身保持竖直。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573938' },
-      { id: 'b1-k3', time: 90, label: '头部微转', tip: '以腰带动肩，头部缓慢左右扫视，幅度可控。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573939' },
-      { id: 'b1-k4', time: 117, label: '复位收势', tip: '回中立位，检查对称与呼吸节奏。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573941' },
-    ],
+    keyframes: keyframesFromStills('b1', BEGINNER_STILLS, BEG_OVERRIDES['beg-01']),
     essentials: [
       '握点对称，避免单侧用力',
       '肘关节保持弹性缓冲',
@@ -185,12 +245,7 @@ const rawLessons: Lesson[] = [
     progress: 100,
     summary: '掌握四点步落位、移重心与狮头上下起伏的配合，形成稳定的行进节奏。',
     tags: ['步法', '四点步', '节奏'],
-    keyframes: [
-      { id: 'b2-k1', time: 9, label: '四点落位', tip: '前后脚开立约肩宽，脚尖略外展。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573936' },
-      { id: 'b2-k2', time: 28, label: '移重心', tip: '重心平滑前移，后脚跟轻提。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573938' },
-      { id: 'b2-k3', time: 90, label: '起伏配合', tip: '狮头随步幅轻微起伏，避免上下脱节。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573939' },
-      { id: 'b2-k4', time: 117, label: '换步回转', tip: '换步时保持上身稳定，脚掌滚动落地。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573941' },
-    ],
+    keyframes: keyframesFromStills('b2', BEGINNER_STILLS, BEG_OVERRIDES['beg-02']),
     essentials: [
       '步幅均匀，脚掌滚动落地',
       '移重心过程连贯无停顿',
@@ -230,12 +285,7 @@ const rawLessons: Lesson[] = [
     progress: 45,
     summary: '练习狮嘴开合、点头与眨眼的机械联动，让静态握持转化为表情语言。',
     tags: ['机械', '开合', '表情'],
-    keyframes: [
-      { id: 'b3-k1', time: 9, label: '准备位', tip: '狮嘴微闭，头部居中。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573936' },
-      { id: 'b3-k2', time: 28, label: '开合节奏', tip: '拇指推杆控制开合，节奏清晰。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573938' },
-      { id: 'b3-k3', time: 90, label: '点头示意', tip: '点头幅度小而有力，配合开合。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573939' },
-      { id: 'b3-k4', time: 117, label: '眨眼收束', tip: '眨眼与点头交替，避免机械重复。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573941' },
-    ],
+    keyframes: keyframesFromStills('b3', BEGINNER_STILLS, BEG_OVERRIDES['beg-03']),
     essentials: [
       '开合节奏清晰可辨',
       '点头幅度小而有力',
@@ -275,12 +325,7 @@ const rawLessons: Lesson[] = [
     progress: 0,
     summary: '将步法、重心与狮头表情串联为短套路，达到初级考核标准。',
     tags: ['综合', '考核', '套路'],
-    keyframes: [
-      { id: 'b4-k1', time: 9, label: '起势', tip: '静立起势，目光向前。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573936' },
-      { id: 'b4-k2', time: 28, label: '行进段', tip: '四点步行进，狮头轻起伏。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573938' },
-      { id: 'b4-k3', time: 90, label: '表情段', tip: '定点开合点头，展现精神。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573939' },
-      { id: 'b4-k4', time: 117, label: '收势', tip: '回中收势，气息下沉。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573941' },
-    ],
+    keyframes: keyframesFromStills('b4', BEGINNER_STILLS, BEG_OVERRIDES['beg-04']),
     essentials: [
       '套路段落衔接自然',
       '表情与行进层次分明',
@@ -323,15 +368,7 @@ const rawLessons: Lesson[] = [
     progress: 100,
     summary: '建立双人站位、架体高度与沟通口令，为托举配合做准备。',
     tags: ['双人', '站位', '架体'],
-    keyframes: [
-      { id: 'i1-k1', time: 2, label: '站位确认', tip: '狮头在前，狮尾双手扶腰侧。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573945' },
-      { id: 'i1-k2', time: 7, label: '架体成型', tip: '架体高度与肩同齐，双手握稳。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76518466' },
-      { id: 'i1-k3', time: 37, label: '口令同步', tip: '以短促口令确认准备就绪。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573937' },
-      { id: 'i1-k4', time: 66, label: '试抬轻离', tip: '轻抬离地试感，检查平衡。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573943' },
-      { id: 'i1-k5', time: 70, label: '回落缓冲', tip: '膝屈缓冲落地，双人同步。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573944' },
-      { id: 'i1-k6', time: 97, label: '调整间距', tip: '根据身高微调前后间距。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573946' },
-      { id: 'i1-k7', time: 101, label: '定型确认', tip: '定型后双方口头确认。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76661222' },
-    ],
+    keyframes: keyframesFromStills('i1', INTERMEDIATE_STILLS, INT_OVERRIDES['int-01']),
     essentials: [
       '站位前后间距适中',
       '架体高度与肩齐平',
@@ -371,15 +408,7 @@ const rawLessons: Lesson[] = [
     progress: 60,
     summary: '完成从下蹲蓄力到托举到位的完整发力链，并在顶点保持稳定。',
     tags: ['托举', '力学', '稳定'],
-    keyframes: [
-      { id: 'i2-k1', time: 2, label: '蓄力下蹲', tip: '双人同步下蹲蓄力。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573945' },
-      { id: 'i2-k2', time: 7, label: '启动上升', tip: '腿部发力主导，手臂辅助。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76518466' },
-      { id: 'i2-k3', time: 37, label: '过腰到位', tip: '架体过腰后减速控制。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573937' },
-      { id: 'i2-k4', time: 66, label: '顶点锁定', tip: '肘锁死，核心收紧稳定。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573943' },
-      { id: 'i2-k5', time: 70, label: '微幅调整', tip: '微调重心，狮头保持水平。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573944' },
-      { id: 'i2-k6', time: 97, label: '稳持计时', tip: '稳持 3–5 秒，呼吸均匀。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573946' },
-      { id: 'i2-k7', time: 101, label: '预备下落', tip: '口令预备，准备同步下落。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76661222' },
-    ],
+    keyframes: keyframesFromStills('i2', INTERMEDIATE_STILLS, INT_OVERRIDES['int-02']),
     essentials: [
       '腿部发力为主、手臂为辅',
       '上升过程连贯加速再减速',
@@ -420,15 +449,7 @@ const rawLessons: Lesson[] = [
     locked: false,
     summary: '掌握可控下落、缓冲落地与双人换位，形成可重复的配合节奏。',
     tags: ['下落', '换位', '协同'],
-    keyframes: [
-      { id: 'i3-k1', time: 2, label: '预备口令', tip: '口令「落」前双方对视确认。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573945' },
-      { id: 'i3-k2', time: 7, label: '同步下落', tip: '膝屈引导，速度可控。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76518466' },
-      { id: 'i3-k3', time: 37, label: '缓冲触地', tip: '脚掌先触地，屈膝吸震。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573937' },
-      { id: 'i3-k4', time: 66, label: '架体回收', tip: '架体平稳回收至腰侧。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573943' },
-      { id: 'i3-k5', time: 70, label: '换位启动', tip: '侧步换位，保持接触点。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573944' },
-      { id: 'i3-k6', time: 97, label: '新站位定型', tip: '换位后重新定型确认。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573946' },
-      { id: 'i3-k7', time: 101, label: '连贯复练', tip: '连续三次下落换位。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76661222' },
-    ],
+    keyframes: keyframesFromStills('i3', INTERMEDIATE_STILLS, INT_OVERRIDES['int-03']),
     essentials: [
       '下落前必须口令确认',
       '屈膝缓冲，避免直腿落地',
@@ -471,12 +492,7 @@ const rawLessons: Lesson[] = [
     progress: 0,
     summary: '在教练保护下完成长凳上站立与缓慢移步，建立高桩平衡感。',
     tags: ['高桩', '长凳', '平衡'],
-    keyframes: [
-      { id: 'a1-k1', time: 9, label: '上凳', tip: '侧身上凳，双手扶持稳固。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76661223' },
-      { id: 'a1-k2', time: 54, label: '站稳', tip: '双脚平行，目视前方定点。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76661218' },
-      { id: 'a1-k3', time: 100, label: '缓移', tip: '小步慢移，重心始终在凳面内。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76661220' },
-      { id: 'a1-k4', time: 107, label: '下凳', tip: '面向下凳，屈膝落地。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573942' },
-    ],
+    keyframes: keyframesFromStills('a1', ADVANCED_STILLS, ADV_OVERRIDES['adv-01']),
     essentials: [
       '上凳侧身、下凳面向',
       '目视前方定点减少晃动',
@@ -517,12 +533,7 @@ const rawLessons: Lesson[] = [
     progress: 0,
     summary: '佩戴完整绿狮头，在高桩与地面间完成展演段落，注重节奏与观赏性。',
     tags: ['绿狮', '展演', '节奏'],
-    keyframes: [
-      { id: 'a2-k1', time: 9, label: '登场', tip: '完整狮头登场，气势开场。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76661223' },
-      { id: 'a2-k2', time: 54, label: '高桩亮相', tip: '高桩定点亮相 2 拍。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76661218' },
-      { id: 'a2-k3', time: 100, label: '流转', tip: '桩间流转，狮头表情丰富。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76661220' },
-      { id: 'a2-k4', time: 107, label: '收场', tip: '下桩收场，定型谢幕。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573942' },
-    ],
+    keyframes: keyframesFromStills('a2', ADVANCED_STILLS, ADV_OVERRIDES['adv-02']),
     essentials: [
       '登场气势饱满',
       '亮相定型清晰可辨',
@@ -564,12 +575,7 @@ const rawLessons: Lesson[] = [
     progress: 20,
     summary: '观察老师如何示范、拆解与纠正学生动作，学习教学组织方法。',
     tags: ['教学', '示范', '纠错'],
-    keyframes: [
-      { id: 'c1-k1', time: 10, label: '集合讲解', tip: '集合后先讲要点再示范。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76661221' },
-      { id: 'c1-k2', time: 36, label: '慢速示范', tip: '慢速拆解关键环节。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76490086' },
-      { id: 'c1-k3', time: 55, label: '学生跟练', tip: '分组跟练，老师巡视。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573948' },
-      { id: 'c1-k4', time: 80, label: '即时纠错', tip: '点名纠正并复现正确动作。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573949' },
-    ],
+    keyframes: keyframesFromStills('c1', CLASSROOM_STILLS),
     essentials: [
       '先讲后练，节奏清晰',
       '示范分正常速与慢速',
@@ -609,12 +615,7 @@ const rawLessons: Lesson[] = [
     progress: 0,
     summary: '走进社团日常训练，感受团队协作、轮换角色与互助氛围。',
     tags: ['社团', '协作', '氛围'],
-    keyframes: [
-      { id: 'c2-k1', time: 8, label: '热身集合', tip: '社团热身，气氛活跃。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76490086' },
-      { id: 'c2-k2', time: 25, label: '分组轮换', tip: '狮头狮尾角色轮换练习。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573948' },
-      { id: 'c2-k3', time: 50, label: '互助纠姿', tip: '同伴互看互纠。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76573949' },
-      { id: 'c2-k4', time: 75, label: '合练收工', tip: '合练短套路后放松。', image: 'https://1823568330.cdn.123clouddisk.com/1823568330/76661219' },
-    ],
+    keyframes: keyframesFromStills('c2', CLUB_STILLS),
     essentials: [
       '角色轮换保证全面发展',
       '同伴互助提高效率',
