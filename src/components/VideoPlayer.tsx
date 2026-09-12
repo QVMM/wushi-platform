@@ -1,0 +1,327 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { formatTime, type Keyframe } from '../data/lessons'
+
+interface Props {
+  poster: string
+  videoUrl: string
+  durationSec: number
+  keyframes: Keyframe[]
+  currentTime: number
+  onTimeChange: (t: number) => void
+  skeletonOn: boolean
+  onSkeletonToggle: () => void
+  selectedKeyframeId: string | null
+  onSelectKeyframe: (id: string) => void
+}
+
+export function VideoPlayer({
+  poster,
+  videoUrl,
+  durationSec,
+  keyframes,
+  currentTime,
+  onTimeChange,
+  skeletonOn,
+  onSkeletonToggle,
+  selectedKeyframeId,
+  onSelectKeyframe,
+}: Props) {
+  const [playing, setPlaying] = useState(false)
+  const [rate, setRate] = useState(1)
+  const [displayPoster, setDisplayPoster] = useState(poster)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const timeRef = useRef(currentTime)
+  const rateRef = useRef(rate)
+  const durationRef = useRef(durationSec)
+  const onTimeChangeRef = useRef(onTimeChange)
+  const raf = useRef<number | null>(null)
+  const last = useRef<number>(0)
+  const hasVideo = Boolean(videoUrl)
+
+  timeRef.current = currentTime
+  rateRef.current = rate
+  durationRef.current = durationSec
+  onTimeChangeRef.current = onTimeChange
+
+  // Keyframe stills as fallback poster when no HTML5 video (or for chip UI)
+  useEffect(() => {
+    if (hasVideo) {
+      setDisplayPoster(poster)
+      return
+    }
+    if (!keyframes.length) {
+      setDisplayPoster(poster)
+      return
+    }
+    let best = keyframes[0]
+    for (const kf of keyframes) {
+      if (kf.time <= currentTime + 0.5) best = kf
+    }
+    setDisplayPoster(best.image)
+  }, [currentTime, keyframes, poster, hasVideo])
+
+  // Fake rAF timer only when no videoUrl
+  useEffect(() => {
+    if (hasVideo) {
+      if (raf.current) cancelAnimationFrame(raf.current)
+      raf.current = null
+      return
+    }
+    if (!playing) {
+      if (raf.current) cancelAnimationFrame(raf.current)
+      raf.current = null
+      return
+    }
+    last.current = performance.now()
+    const tick = (now: number) => {
+      const dt = ((now - last.current) / 1000) * rateRef.current
+      last.current = now
+      const next = Math.min(durationRef.current, timeRef.current + dt)
+      onTimeChangeRef.current(next)
+      if (next >= durationRef.current) {
+        setPlaying(false)
+        return
+      }
+      raf.current = requestAnimationFrame(tick)
+    }
+    raf.current = requestAnimationFrame(tick)
+    return () => {
+      if (raf.current) cancelAnimationFrame(raf.current)
+    }
+  }, [playing, hasVideo])
+
+  // Sync playbackRate on video element
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || !hasVideo) return
+    v.playbackRate = rate
+  }, [rate, hasVideo])
+
+  // Sync external currentTime → video when scrubbing / seeking while paused
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || !hasVideo) return
+    if (Math.abs(v.currentTime - currentTime) > 0.35) {
+      try {
+        v.currentTime = currentTime
+      } catch {
+        /* ignore seek before metadata */
+      }
+    }
+  }, [currentTime, hasVideo])
+
+  // Play / pause video element with state
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || !hasVideo) return
+    if (playing) {
+      const p = v.play()
+      if (p && typeof p.catch === 'function') p.catch(() => setPlaying(false))
+    } else {
+      v.pause()
+    }
+  }, [playing, hasVideo])
+
+  const onTimeUpdate = useCallback(() => {
+    const v = videoRef.current
+    if (!v || !playing) return
+    onTimeChange(v.currentTime)
+  }, [onTimeChange, playing])
+
+  const onEnded = useCallback(() => {
+    setPlaying(false)
+    const v = videoRef.current
+    if (v) onTimeChange(v.duration || durationSec)
+  }, [onTimeChange, durationSec])
+
+  const togglePlay = useCallback(() => {
+    if (hasVideo) {
+      const v = videoRef.current
+      if (v && (v.ended || timeRef.current >= durationRef.current - 0.05)) {
+        v.currentTime = 0
+        onTimeChange(0)
+      }
+      setPlaying((p) => !p)
+      return
+    }
+    if (timeRef.current >= durationRef.current) onTimeChange(0)
+    setPlaying((p) => !p)
+  }, [onTimeChange, hasVideo])
+
+  const scrub = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const t = Number(e.target.value)
+    setPlaying(false)
+    onTimeChange(t)
+    const v = videoRef.current
+    if (v && hasVideo) {
+      try {
+        v.currentTime = t
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  const jumpKf = (kf: Keyframe) => {
+    setPlaying(false)
+    onTimeChange(kf.time)
+    onSelectKeyframe(kf.id)
+    const v = videoRef.current
+    if (v && hasVideo) {
+      try {
+        v.currentTime = kf.time
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  return (
+    <div className="rounded-xl overflow-hidden border border-ink-border bg-ink-elevated shadow-2xl shadow-black/40">
+      <div className="relative aspect-video bg-black group">
+        {hasVideo ? (
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            poster={poster}
+            className="absolute inset-0 w-full h-full object-cover"
+            playsInline
+            preload="metadata"
+            onTimeUpdate={onTimeUpdate}
+            onEnded={onEnded}
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+          />
+        ) : (
+          <img
+            src={displayPoster}
+            alt="课时画面"
+            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
+          />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 pointer-events-none" />
+
+        {skeletonOn && (
+          <div className="absolute inset-0 pointer-events-none">
+            <svg className="w-full h-full opacity-70" viewBox="0 0 800 450" preserveAspectRatio="xMidYMid slice">
+              <g stroke="#C6A15B" strokeWidth="2" fill="none">
+                <ellipse cx="400" cy="120" rx="55" ry="42" />
+                <line x1="400" y1="162" x2="400" y2="280" />
+                <line x1="400" y1="190" x2="320" y2="240" />
+                <line x1="400" y1="190" x2="480" y2="240" />
+                <line x1="320" y1="240" x2="300" y2="200" />
+                <line x1="480" y1="240" x2="500" y2="200" />
+                <line x1="400" y1="280" x2="350" y2="380" />
+                <line x1="400" y1="280" x2="460" y2="380" />
+                <circle cx="400" cy="190" r="5" fill="#C23A2B" stroke="none" />
+                <circle cx="400" cy="280" r="5" fill="#C23A2B" stroke="none" />
+              </g>
+            </svg>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={togglePlay}
+          className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
+          aria-label={playing ? '暂停' : '播放'}
+        >
+          <span className="w-16 h-16 rounded-full bg-vermillion/90 text-white flex items-center justify-center shadow-lg shadow-vermillion/30 backdrop-blur-sm hover:scale-105 transition-transform">
+            {playing ? (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+            ) : (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" className="ml-1"><path d="M8 5v14l11-7z"/></svg>
+            )}
+          </span>
+        </button>
+
+        <div className="absolute top-3 right-3 px-2.5 py-1 rounded bg-black/60 text-xs tabular-nums text-paper-dim border border-white/10">
+          {formatTime(currentTime)} / {formatTime(durationSec)}
+        </div>
+
+        {skeletonOn && (
+          <div className="absolute top-3 left-3 px-2.5 py-1 rounded seal-stamp text-[11px] bg-black/40">
+            骨架叠加 · ON
+          </div>
+        )}
+      </div>
+
+      <div className="px-4 py-3 space-y-3 border-t border-ink-border bg-ink-soft/80">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={togglePlay}
+            className="w-9 h-9 rounded-md bg-vermillion hover:bg-vermillion-soft text-white flex items-center justify-center transition-colors shrink-0"
+            aria-label={playing ? '暂停' : '播放'}
+          >
+            {playing ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5"><path d="M8 5v14l11-7z"/></svg>
+            )}
+          </button>
+
+          <input
+            type="range"
+            min={0}
+            max={durationSec}
+            step={0.1}
+            value={Math.min(currentTime, durationSec)}
+            onChange={scrub}
+            className="flex-1 accent-gold h-1.5 cursor-pointer"
+            aria-label="进度"
+          />
+
+          <div className="flex items-center gap-1 shrink-0">
+            {[0.5, 1].map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRate(r)}
+                className={`px-2 py-1 rounded text-xs tabular-nums transition-colors ${
+                  rate === r ? 'bg-gold/20 text-gold-soft border border-gold/40' : 'text-mist hover:text-paper border border-transparent'
+                }`}
+              >
+                {r}x
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={onSkeletonToggle}
+            className={`px-2.5 py-1.5 rounded-md text-xs border transition-colors ${
+              skeletonOn
+                ? 'border-gold/50 bg-gold/15 text-gold-soft'
+                : 'border-ink-border text-mist hover:text-paper hover:border-mist/40'
+            }`}
+          >
+            骨架叠加
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {keyframes.map((kf) => {
+            const active = selectedKeyframeId === kf.id || Math.abs(currentTime - kf.time) < 1.2
+            return (
+              <button
+                key={kf.id}
+                type="button"
+                onClick={() => jumpKf(kf)}
+                className={`flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full border text-xs transition-all ${
+                  active
+                    ? 'border-vermillion/60 bg-vermillion/15 text-paper ring-1 ring-vermillion/30'
+                    : 'border-ink-border bg-ink text-mist hover:border-gold/40 hover:text-paper'
+                }`}
+              >
+                <img src={kf.image} alt="" className="w-7 h-7 rounded-full object-cover" />
+                <span className="tabular-nums text-gold-dim">{formatTime(kf.time)}</span>
+                <span>{kf.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
