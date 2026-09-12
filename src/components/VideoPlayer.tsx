@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { formatTime, type Keyframe } from '../data/lessons'
 import { usePoseSkeleton } from '../hooks/usePoseSkeleton'
+import { poseTrackUrlForVideo } from '../data/poseTracks'
 import { drawPoseCanvas, modeLabel, type Landmark, type PoseMode } from '../lib/pose'
 
 interface Props {
@@ -45,12 +46,15 @@ export function VideoPlayer({
 
   const keyframeTimes = useMemo(() => keyframes.map((k) => k.time), [keyframes])
 
+  const poseTrackUrl = useMemo(() => poseTrackUrlForVideo(videoUrl), [videoUrl])
+
   const { landmarks, mode } = usePoseSkeleton({
     videoRef,
     enabled: skeletonOn,
     currentTime,
     keyframeTimes,
     hasVideo,
+    poseTrackUrl,
   })
 
   timeRef.current = currentTime
@@ -299,7 +303,11 @@ export function VideoPlayer({
             </div>
             <div
               className={`w-1.5 h-1.5 rounded-full ${
-                mode === 'live' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]' : 'bg-gold/80'
+                mode === 'track'
+                  ? 'bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.75)]'
+                  : mode === 'live'
+                    ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]'
+                    : 'bg-gold/80'
               }`}
             />
           </div>

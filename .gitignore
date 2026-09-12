@@ -24,5 +24,9 @@ dist-ssr
 *.sw?
 
 preview-shots/
-.DS_Store
 public/lessons/
+
+# Local pose extraction tooling (tracks in public/poses are committed)
+models/
+.venv-pose/
+scripts/__pycache__/

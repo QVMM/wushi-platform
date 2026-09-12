@@ -78,7 +78,11 @@ export function SkeletonPanel({
         {active && (
           <span
             className={`w-1.5 h-1.5 rounded-full ${
-              mode === 'live' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]' : 'bg-gold/70'
+              mode === 'track'
+                ? 'bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.75)]'
+                : mode === 'live'
+                  ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]'
+                  : 'bg-gold/70'
             }`}
           />
         )}
@@ -90,7 +94,7 @@ export function SkeletonPanel({
             <stop offset="100%" stopColor={JOINT} />
           </linearGradient>
           <filter id={`glow-${gradId}`} x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation="2.2" result="blur" />
+            <feGaussianBlur stdDeviation="3.0" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
@@ -116,7 +120,7 @@ export function SkeletonPanel({
                 x2={pb.x}
                 y2={pb.y}
                 stroke={`url(#bone-${gradId})`}
-                strokeWidth="2.75"
+                strokeWidth="3.25"
                 strokeLinecap="round"
               />
             )

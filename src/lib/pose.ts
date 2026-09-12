@@ -1,6 +1,6 @@
 /** Pose landmarks, drawing, EMA, and keyframe interpolation for teaching skeleton UI */
 
-export type PoseMode = 'live' | 'keyframe' | 'idle'
+export type PoseMode = 'track' | 'live' | 'keyframe' | 'idle'
 
 export interface Landmark {
   x: number
@@ -267,7 +267,7 @@ export function createEmaFilter(alpha = 0.35) {
   }
 }
 
-export function visibleEnough(lm: Landmark | undefined, min = 0.35): boolean {
+export function visibleEnough(lm: Landmark | undefined, min = 0.22): boolean {
   if (!lm) return false
   if (lm.visibility == null) return true
   return lm.visibility >= min
@@ -291,11 +291,11 @@ export function drawPoseCanvas(
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
 
-  // Soft glow pass
-  ctx.shadowColor = 'rgba(198, 161, 91, 0.55)'
-  ctx.shadowBlur = 12
+  // Soft glow pass (thicker, more visible)
+  ctx.shadowColor = 'rgba(198, 161, 91, 0.75)'
+  ctx.shadowBlur = 18
   ctx.strokeStyle = BONE
-  ctx.lineWidth = 3.5
+  ctx.lineWidth = 4.5
 
   for (const [a, b] of TEACHING_CONNECTIONS) {
     const la = landmarks[a]
@@ -308,8 +308,8 @@ export function drawPoseCanvas(
   }
 
   // Joints
-  ctx.shadowColor = 'rgba(194, 58, 43, 0.45)'
-  ctx.shadowBlur = 10
+  ctx.shadowColor = 'rgba(194, 58, 43, 0.55)'
+  ctx.shadowBlur = 14
   const joints = [
     IDX.nose,
     IDX.leftShoulder,
@@ -349,7 +349,64 @@ export function drawPoseCanvas(
 }
 
 export function modeLabel(mode: PoseMode): string {
+  if (mode === 'track') return '轨迹回放'
   if (mode === 'live') return '实时姿态'
   if (mode === 'keyframe') return '关键帧驱动'
   return '姿态示意'
+}
+
+/** Compact offline pose track JSON shape */
+export interface PoseTrackFrame {
+  t: number
+  lm: number[][] // [[x,y,z,v], ...] length 33
+}
+
+export interface PoseTrack {
+  fps: number
+  duration: number
+  frames: PoseTrackFrame[]
+}
+
+function lmFromArray(row: number[] | undefined): Landmark {
+  if (!row || row.length < 2) return { x: 0.5, y: 0.5, z: 0, visibility: 0 }
+  return {
+    x: row[0],
+    y: row[1],
+    z: row[2] ?? 0,
+    visibility: row[3] ?? 1,
+  }
+}
+
+export function poseTrackFrameToLandmarks(frame: PoseTrackFrame): Landmark[] {
+  const out: Landmark[] = []
+  for (let i = 0; i < LANDMARK_COUNT; i++) {
+    out.push(lmFromArray(frame.lm[i]))
+  }
+  return out
+}
+
+/** Binary-search nearest frames and lerp by currentTime (instant seek-friendly) */
+export function interpolatePoseTrack(track: PoseTrack, currentTime: number): Landmark[] {
+  const frames = track.frames
+  if (!frames.length) return getIdlePose()
+  if (frames.length === 1 || currentTime <= frames[0].t) {
+    return poseTrackFrameToLandmarks(frames[0])
+  }
+  if (currentTime >= frames[frames.length - 1].t) {
+    return poseTrackFrameToLandmarks(frames[frames.length - 1])
+  }
+
+  let lo = 0
+  let hi = frames.length - 1
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1
+    if (frames[mid].t <= currentTime) lo = mid
+    else hi = mid
+  }
+  const a = frames[lo]
+  const b = frames[hi]
+  const span = b.t - a.t || 1
+  const u = (currentTime - a.t) / span
+  const s = u * u * (3 - 2 * u)
+  return lerpLandmarks(poseTrackFrameToLandmarks(a), poseTrackFrameToLandmarks(b), s)
 }
