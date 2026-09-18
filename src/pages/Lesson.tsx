@@ -16,8 +16,8 @@ export function Lesson() {
   const lesson = lessons.find((l) => l.id === lessonId) ?? null
 
   const [time, setTime] = useState(0)
-  const [trackOn, setTrackOn] = useState(true)
-  const [analysisOn, setAnalysisOn] = useState(true)
+  const [trackOn, setTrackOn] = useState(false)
+  const [analysisOn, setAnalysisOn] = useState(false)
   const [selectedKf, setSelectedKf] = useState<string | null>(null)
   const [tipTab, setTipTab] = useState<TipTab>('essentials')
 
